@@ -18,6 +18,8 @@ services:
   pushgateway:
     image: prom/pushgateway:latest
     container_name: pushgateway
+    command:
+      - "--web.enable-admin-api"
     ports:
       - "9091:9091"
     restart: unless-stopped
