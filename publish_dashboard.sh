@@ -3,38 +3,45 @@
 # Pushes grafana/dashboards/airflow_observability.json to a running Grafana instance.
 # Does NOT require a Grafana restart.
 
+# Get the absolute path of the directory where this script lives
+BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 GRAFANA_URL="${GRAFANA_URL:-http://admin:admin@localhost:3000}"
-DASHBOARD_FILE="grafana/dashboards/airflow_observability.json"
+DASHBOARD_DIR="$BASE_DIR/grafana/dashboards"
 
-echo "Publishing $DASHBOARD_FILE → $GRAFANA_URL ..."
+# Ensure the directory exists
+if [ ! -d "$DASHBOARD_DIR" ]; then
+    echo "❌ Error: Dashboard directory not found at $DASHBOARD_DIR"
+    exit 1
+fi
 
-# Strip the `version` field before pushing — Grafana manages its own internal
-# version counter and will reject the push if the number doesn't match.
-# The `version` in the local file is used only by the file-provisioner poller.
-PAYLOAD=$(python3 -c "
-import json, sys
+# Enable nullglob so the loop doesn't run if no .json files exist
+shopt -s nullglob
 
+for DASHBOARD_FILE in "$DASHBOARD_DIR"/*.json; do
+    echo "Publishing $(basename "$DASHBOARD_FILE") → $GRAFANA_URL ..."
+
+    # Strip version/id so Grafana can manage its own internal DB state
+    PAYLOAD=$(python3 -c "
+import json
 with open('$DASHBOARD_FILE') as f:
     d = json.load(f)
-
-d.pop('version', None)   # let Grafana own the version counter
-d.pop('id', None)        # let Grafana own the internal DB id
-
+d.pop('version', None)
+d.pop('id', None)
 print(json.dumps({'dashboard': d, 'overwrite': True, 'folderId': 0}))
 ")
 
-RESULT=$(curl -s -X POST "$GRAFANA_URL/api/dashboards/db" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD")
+    RESULT=$(curl -s -X POST "$GRAFANA_URL/api/dashboards/db" \
+      -H "Content-Type: application/json" \
+      -d "$PAYLOAD")
 
-STATUS=$(echo "$RESULT" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('status','error'))")
-URL=$(echo "$RESULT" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('url',''))")
-VERSION=$(echo "$RESULT" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('version','?'))")
+    STATUS=$(echo "$RESULT" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('status','error'))")
+    
+    if [ "$STATUS" = "success" ]; then
+      VERSION=$(echo "$RESULT" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('version','?'))")
+      echo "   ✅ Success (v$VERSION)"
+    else
+      echo "   ❌ Failed: $RESULT"
+    fi
+done
 
-if [ "$STATUS" = "success" ]; then
-  echo "✅ Dashboard published (Grafana internal version: $VERSION)"
-  echo "   Open: http://localhost:3000$URL"
-else
-  echo "❌ Failed: $RESULT"
-  exit 1
-fi
+echo "Done. View all dashboards at http://localhost:3000/dashboards"

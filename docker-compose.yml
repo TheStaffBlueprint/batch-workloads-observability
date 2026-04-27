@@ -24,6 +24,18 @@ services:
       - "9091:9091"
     restart: unless-stopped
 
+  statsd-exporter:
+    image: prom/statsd-exporter:latest
+    container_name: statsd-exporter
+    command:
+      - "--statsd.listen-udp=:8125"
+      - "--statsd.listen-tcp=:8125"
+    ports:
+      - "9102:9102"
+      - "8125:8125/udp"
+      - "8125:8125/tcp"
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana

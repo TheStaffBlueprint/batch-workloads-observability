@@ -4,9 +4,42 @@ This repository is the companion code for the article: **[Airflow Batch Observab
 
 It provides a complete, production-ready, local observability stack demonstrating how to correctly extract granular metrics from Airflow batch workloads using the Prometheus Pushgateway, and how to safely manage Pushgateway state to avoid OOM crashes.
 
+### The Interactive Lab: Simulating the Race Condition
+This repository contains a built-in simulation to mathematically prove why you should not use Prometheus Pushgateway for Counters. 
+
+We have two separate feature-flagged plugins in the `airflow/plugins/` directory:
+1. **V1 Anti-Pattern:** Uses `Counter`.
+2. **V2 Gauge Fix:** Uses `Gauge` for state snapshots.
+
+**To run the simulation:**
+1. Configure your `.env` (see below).
+2. Enable V1 by setting `AIRFLOW_VAR_ENABLE_V1_COUNTERS=true` and restarting Airflow.
+3. In the Airflow UI, trigger the `race_condition_simulator` DAG.
+4. This DAG spins up 10 tasks that fail at the exact same millisecond. 
+5. Check Grafana (Lab Dashboard). Because of the Pushgateway overwrite race condition, you will only see 1 failure recorded instead of 10. You just lost 9 metrics.
+6. Now, disable V1, enable V2 (`AIRFLOW_VAR_ENABLE_V2_GAUGES=true`), and run the DAG again. Watch Grafana correctly show 10 failures.
+
+### Environment Configuration (.env)
+Create a `.env` file in the root of the `airflow/` directory. Copy and paste the following configuration:
+
+```bash
+# Pushgateway URL (Astro CLI requires host.docker.internal to reach the host)
+AIRFLOW_VAR_PUSHGATEWAY_URL=http://host.docker.internal:9091
+
+# Interactive Lab Flags (Enable one at a time)
+AIRFLOW_VAR_ENABLE_V1_COUNTERS=true
+AIRFLOW_VAR_ENABLE_V2_GAUGES=false
+
+# StatsD — Native Airflow metrics (Standard Production Architecture)
+AIRFLOW__METRICS__STATSD_ON=True
+AIRFLOW__METRICS__STATSD_HOST=host.docker.internal
+AIRFLOW__METRICS__STATSD_PORT=8125
+AIRFLOW__METRICS__STATSD_PREFIX=airflow
+```
+
 ## What's Inside?
 
-1. **The Custom Airflow Plugin (`airflow/plugins/pushgateway_plugin.py`)**: 
+1. **The Custom Airflow Plugins (`airflow/plugins/v1_anti_pattern_plugin.py` & `airflow/plugins/v2_gauge_fix_plugin.py`)**: 
    A strict Airflow 3 compliant plugin that listens to task lifecycle events (`on_task_instance_running`, `on_task_instance_success`, `on_task_instance_failed`). It pushes state to the Pushgateway using `Gauge` metrics, dynamically injecting the `run_id` to prevent parallel tasks from silently overwriting each other.
    
 2. **The Sweeper DAG (`airflow/dags/pushgateway_sweeper.py`)**: 
@@ -35,14 +68,8 @@ You can now access:
 - **Prometheus UI:** http://localhost:9090
 - **Grafana UI:** http://localhost:3000
 
-### 2. Configure Airflow to connect to Pushgateway
-Because Airflow (via Astro CLI) and the Observability stack run in separate Docker networks, you must tell Airflow to route traffic to the host machine to reach the Pushgateway.
-
-Create a `.env` file in the root of the project with this variable:
-```bash
-# .env
-AIRFLOW_VAR_PUSHGATEWAY_URL=http://host.docker.internal:9091
-```
+### 2. Configure Airflow (.env)
+Create the `.env` file in the `airflow/` directory using the template provided in the **Environment Configuration** section above.
 
 ### 3. Start Airflow
 This project uses the Astronomer CLI to run Airflow locally.

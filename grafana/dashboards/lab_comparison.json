@@ -1,0 +1,227 @@
+{
+  "title": "🔬 Lab: Anti-Pattern vs Gauge Fix — Side by Side",
+  "uid": "airflow-lab-comparison",
+  "tags": ["airflow", "lab", "comparison"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "dag_id",
+        "label": "DAG",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(airflow_dag_run_duration_seconds, dag_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "mode": "markdown",
+        "content": "## 🔬 Interactive Lab: The Pushgateway Race Condition\nThis dashboard compares **V1 Anti-Pattern (Counters)** vs **V2 Gauge Fix (Gauges)** side by side.\n\n**How to run the simulation:**\n1. Set `AIRFLOW_VAR_ENABLE_V1_COUNTERS=true`, trigger `race_condition_simulator` → watch V1 show **1** failure\n2. Set `AIRFLOW_VAR_ENABLE_V2_GAUGES=true`, trigger again → watch V2 correctly show **10** failures"
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "❌ V1: Anti-Pattern — Counter-based (Broken)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "V1 — Task Failures Recorded",
+      "description": "Uses Counter. With 10 simultaneous failures, this will show 1 due to the race condition.",
+      "gridPos": { "x": 0, "y": 5, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (dag_id) (max_over_time(airflow_task_instance_failures_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}[$__range]))",
+          "legendFormat": "{{dag_id}}",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "V1 — Tasks Running",
+      "gridPos": { "x": 6, "y": 5, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (dag_id) (max_over_time(airflow_task_instance_state_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\", state=\"running\"}[$__range]))",
+          "legendFormat": "{{dag_id}}",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "V1 — Tasks Succeeded",
+      "gridPos": { "x": 12, "y": 5, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (dag_id) (max_over_time(airflow_task_instance_state_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\", state=\"success\"}[$__range]))",
+          "legendFormat": "{{dag_id}}",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "id": 14,
+      "type": "piechart",
+      "title": "V1 — Task Failure Types",
+      "gridPos": { "x": 18, "y": 5, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (type) (max_over_time(airflow_task_instance_failures_by_type_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}[$__range]))",
+          "legendFormat": "{{type}}",
+          "instant": false
+        }
+      ],
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right", "showLegend": true } }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "✅ V2: Gauge Fix — State Snapshots (Correct)",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "V2 — Task Failures Recorded",
+      "description": "Uses Gauge + count(). With 10 simultaneous failures, this correctly shows 10.",
+      "gridPos": { "x": 0, "y": 12, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(airflow_task_instance_status{job=\"airflow_tasks_v2\", dag_id=~\"$dag_id\"} == -1) or vector(0)",
+          "legendFormat": "Failed Tasks",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "V2 — Tasks Running",
+      "gridPos": { "x": 6, "y": 12, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(airflow_task_instance_status{job=\"airflow_tasks_v2\", dag_id=~\"$dag_id\"} == 0) or vector(0)",
+          "legendFormat": "Running Tasks",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "V2 — Tasks Succeeded",
+      "gridPos": { "x": 12, "y": 12, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(airflow_task_instance_status{job=\"airflow_tasks_v2\", dag_id=~\"$dag_id\"} == 1) or vector(0)",
+          "legendFormat": "Successful Tasks",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "id": 24,
+      "type": "piechart",
+      "title": "V2 — Task Failure Types",
+      "gridPos": { "x": 18, "y": 12, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count by (type) (airflow_task_instance_failure_type{job=\"airflow_tasks_v2\", dag_id=~\"$dag_id\"} == 1)",
+          "legendFormat": "{{type}}",
+          "instant": false
+        }
+      ],
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right", "showLegend": true } }
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "📊 Shared: Duration Metrics (work for both V1 and V2)",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "DAG Duration Per Run",
+      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "airflow_dag_run_duration_seconds{dag_id=~\"$dag_id\"} unless (airflow_dag_run_duration_seconds{dag_id=~\"$dag_id\"} offset 2m)",
+          "legendFormat": "{{dag_id}} — {{run_id}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "points", "pointSize": 8 } } }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Task Duration Per Run",
+      "gridPos": { "x": 12, "y": 19, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "airflow_task_instance_duration_seconds{dag_id=~\"$dag_id\"} unless (airflow_task_instance_duration_seconds{dag_id=~\"$dag_id\"} offset 2m)",
+          "legendFormat": "{{task_id}} — {{run_id}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "points", "pointSize": 8 } } }
+    }
+  ]
+}
