@@ -1,0 +1,158 @@
+{
+  "title": "Spark ETL Observability",
+  "uid": "spark-etl-observability",
+  "tags": ["spark", "etl", "observability", "metrics"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "app_name",
+        "label": "Spark App",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(spark_job_status, app_name)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "🚀 Job Status & Performance",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Current Job Status",
+      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "last_over_time(spark_job_status{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{app_name}}",
+          "instant": false
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "valueSize": 80 },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "RUNNING", "color": "blue" }, "1": { "text": "SUCCESS", "color": "green" }, "-1": { "text": "FAILED", "color": "red" } } }
+          ],
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Records Processed",
+      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "max_over_time(spark_job_records_total{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{app_name}}",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Last Job Duration",
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "last_over_time(spark_job_duration_seconds{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{app_name}}",
+          "instant": false
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "continuous-GrYlRd" } } }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "📊 Stage Breakdown",
+      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "Stage Durations",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "max_over_time(spark_stage_duration_seconds{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{stage}}",
+          "instant": true
+        }
+      ],
+      "options": { "orientation": "auto" },
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 7,
+      "type": "barchart",
+      "title": "Records Throughput (In vs Out)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "max_over_time(spark_stage_records_in{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{stage}} (In)",
+          "instant": true
+        },
+        {
+          "expr": "max_over_time(spark_stage_records_out{app_name=~\"$app_name\"}[1h])",
+          "legendFormat": "{{stage}} (Out)",
+          "instant": true
+        }
+      ],
+      "options": { "stacking": "none", "groupWidth": 0.7 },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "📈 Historical Execution Trends",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Job Duration Over Time",
+      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "spark_job_duration_seconds{app_name=~\"$app_name\"} unless (spark_job_duration_seconds{app_name=~\"$app_name\" } offset 2m)",
+          "legendFormat": "{{app_name}} ({{app_id}})",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "points", "pointSize": 10 } } }
+    }
+  ]
+}
