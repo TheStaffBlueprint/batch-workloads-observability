@@ -4,7 +4,7 @@
   "tags": ["spark", "etl", "observability", "metrics"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 4,
   "refresh": "5s",
   "templating": {
     "list": [
@@ -15,9 +15,18 @@
         "datasource": { "type": "prometheus", "uid": "Prometheus" },
         "query": "label_values(spark_job_status, app_name)",
         "sort": 1,
-        "includeAll": true,
-        "allValue": ".*",
-        "multi": true
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "app_id",
+        "label": "Run ID (app_id)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(spark_job_status{app_name=\"$app_name\"}, app_id)",
+        "sort": 2,
+        "includeAll": false,
+        "multi": false
       }
     ]
   },
@@ -25,48 +34,50 @@
     {
       "id": 1,
       "type": "row",
-      "title": "🚀 Job Status & Performance",
+      "title": "📊 Aggregated Performance (Across All Runs)",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Current Job Status",
-      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 6 },
+      "title": "Avg Job Duration",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "last_over_time(spark_job_status{app_name=~\"$app_name\"}[1h])",
-          "legendFormat": "{{app_name}}",
-          "instant": false
+          "expr": "avg(max_over_time(spark_job_duration_seconds{app_name=\"$app_name\"}[$__range]))",
+          "legendFormat": "Avg Duration"
         }
       ],
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "text": { "valueSize": 80 },
-        "colorMode": "background"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            { "type": "value", "options": { "0": { "text": "RUNNING", "color": "blue" }, "1": { "text": "SUCCESS", "color": "green" }, "-1": { "text": "FAILED", "color": "red" } } }
-          ],
-          "thresholds": { "steps": [{ "color": "green", "value": null }] }
-        }
-      }
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "continuous-GrYlRd" } } }
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Total Records Processed",
-      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 6 },
+      "title": "Max Records (Per Run)",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "max_over_time(spark_job_records_total{app_name=~\"$app_name\"}[1h])",
-          "legendFormat": "{{app_name}}",
-          "instant": false
+          "expr": "max(max_over_time(spark_job_records_total{app_name=\"$app_name\"}[$__range]))",
+          "legendFormat": "Max Records"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Total Records (All Runs)",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(spark_job_records_total{app_name=\"$app_name\"}[$__range]))",
+          "legendFormat": "Total Records"
         }
       ],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
@@ -75,35 +86,90 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Last Job Duration",
-      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 },
+      "title": "Success Rate",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "last_over_time(spark_job_duration_seconds{app_name=~\"$app_name\"}[1h])",
-          "legendFormat": "{{app_name}}",
-          "instant": false
+          "expr": "count(spark_job_status{app_name=\"$app_name\"} == 1) / count(spark_job_status{app_name=\"$app_name\"} != 0) * 100",
+          "legendFormat": "Success %"
         }
       ],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "continuous-GrYlRd" } } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 }] }
+        }
+      }
     },
     {
       "id": 5,
       "type": "row",
-      "title": "📊 Stage Breakdown",
+      "title": "🔍 Single Run Details (Run ID: $app_id)",
       "gridPos": { "x": 0, "y": 7, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 6,
-      "type": "barchart",
-      "title": "Stage Durations",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "type": "stat",
+      "title": "Run Status",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "max_over_time(spark_stage_duration_seconds{app_name=~\"$app_name\"}[1h])",
+          "expr": "spark_job_status{app_id=\"$app_id\"}",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "text": { "valueSize": 80 } },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "RUNNING", "color": "blue" }, "1": { "text": "SUCCESS", "color": "green" }, "-1": { "text": "FAILED", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Run Duration",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "spark_job_duration_seconds{app_id=\"$app_id\"}",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Total Records",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "spark_job_records_total{app_id=\"$app_id\"}",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 9,
+      "type": "barchart",
+      "title": "Stage Durations ($app_id)",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "spark_stage_duration_seconds{app_id=\"$app_id\"}",
           "legendFormat": "{{stage}}",
           "instant": true
         }
@@ -112,47 +178,60 @@
       "fieldConfig": { "defaults": { "unit": "s" } }
     },
     {
-      "id": 7,
+      "id": 10,
       "type": "barchart",
-      "title": "Records Throughput (In vs Out)",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "title": "Records In vs Out ($app_id)",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "max_over_time(spark_stage_records_in{app_name=~\"$app_name\"}[1h])",
+          "expr": "spark_stage_records_in{app_id=\"$app_id\"}",
           "legendFormat": "{{stage}} (In)",
           "instant": true
         },
         {
-          "expr": "max_over_time(spark_stage_records_out{app_name=~\"$app_name\"}[1h])",
+          "expr": "spark_stage_records_out{app_id=\"$app_id\"}",
           "legendFormat": "{{stage}} (Out)",
           "instant": true
         }
       ],
-      "options": { "stacking": "none", "groupWidth": 0.7 },
+      "options": { "stacking": "none" },
       "fieldConfig": { "defaults": { "unit": "short" } }
     },
     {
-      "id": 8,
+      "id": 11,
       "type": "row",
-      "title": "📈 Historical Execution Trends",
-      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 },
+      "title": "📈 Historical Trends ($app_name)",
+      "gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
-      "id": 9,
+      "id": 12,
       "type": "timeseries",
-      "title": "Job Duration Over Time",
-      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 8 },
+      "title": "Duration Trend",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "spark_job_duration_seconds{app_name=~\"$app_name\"} unless (spark_job_duration_seconds{app_name=~\"$app_name\" } offset 2m)",
-          "legendFormat": "{{app_name}} ({{app_id}})",
-          "instant": false
+          "expr": "spark_job_duration_seconds{app_name=\"$app_name\"} unless (spark_job_duration_seconds{app_name=\"$app_name\"} offset 2m)",
+          "legendFormat": "{{app_id}}"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "points", "pointSize": 10 } } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Records Trend",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "spark_job_records_total{app_name=\"$app_name\"} unless (spark_job_records_total{app_name=\"$app_name\"} offset 2m)",
+          "legendFormat": "{{app_id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "points", "pointSize": 10 } } }
     }
   ]
 }

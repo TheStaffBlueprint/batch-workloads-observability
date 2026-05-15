@@ -85,10 +85,12 @@ class SparkMetricsReporter:
     # Push helper (mirrors _push from Airflow V2 plugin)
     # ------------------------------------------------------------------
     def _push(self, registry: CollectorRegistry, group_key: dict[str, str]) -> None:
+        # Use a unique job name including app_name and app_id to ensure distinct groups in Pushgateway
+        full_job_name = f"{JOB_NAME}_{self.app_name}_{self.app_id}"
         try:
             pushadd_to_gateway(
                 self.pushgateway_url,
-                job=JOB_NAME,
+                job=full_job_name,
                 grouping_key=group_key,
                 registry=registry,
                 timeout=self.timeout,
