@@ -3,9 +3,11 @@
 .DS_Store
 __pycache__/
 
-# keep graph outputs, skip heavy/local-only files
-graphify-out/cache/*
-graphify-out/manifest.json
-graphify-out/cost.json
-graphify-out/.graphify_python
-graphify-out/.graphify_uncached.txt
+# Ignore all graphify outputs as they contain local absolute paths
+graphify-out/
+
+# Ignore local agent and project rules
+.agents/rules/graphify.md
+.agents/workflows/graphify.md
+GEMINI.md
+.gemini/
