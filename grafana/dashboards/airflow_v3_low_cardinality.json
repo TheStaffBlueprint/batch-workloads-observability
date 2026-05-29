@@ -1,41 +1,180 @@
 {
-  "annotations": {
+  "title": "Airflow Observability — V3 Low Cardinality",
+  "uid": "airflow-observability-v3",
+  "tags": ["airflow", "v3", "low-cardinality", "production"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
-        "enable": true,
-        "hide": true,
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "name": "dag_id",
+        "label": "DAG",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status{job=\"airflow_tasks\"}, dag_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      },
+      {
+        "name": "task_id",
+        "label": "Task",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}, task_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": null,
-  "links": [],
-  "liveNow": false,
-  "panels": [],
-  "refresh": "",
-  "schemaVersion": 38,
-  "style": "dark",
-  "tags": [],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Barebones Observability Dashboard",
-  "uid": "barebones-obs",
-  "version": 1,
-  "weekStart": ""
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "mode": "markdown",
+        "content": "## ✅ V3: Production Low-Cardinality Dashboard\nThis dashboard uses the **V3 Production Plugin**, which removes `run_id` from the grouping key.\n\n**The Trade-off:**\n- ✅ **Bounded Cardinality:** Series count = number of unique tasks. No TSDB bloat.\n- ✅ **Latest State:** Always shows the result of the *most recent* execution.\n- ❌ **No Per-Run Identity:** You cannot distinguish between Run A and Run B here. Use structured logs or OLAP for per-run audit history.\n\n**Enable with:** `AIRFLOW_VAR_ENABLE_V3_LOW_CARDINALITY=true`"
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "📊 Latest Fleet Status (Most Recent Run)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tasks Currently Failed",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\"} == -1) or vector(0)",
+          "legendFormat": "Failed",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tasks Currently Succeeded",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\"} == 1) or vector(0)",
+          "legendFormat": "Succeeded",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "📈 Fleet Health Trends (Over Time)",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Active Failures Over Time",
+      "description": "Counts how many task series currently hold a value of -1 at each scrape interval.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == -1) or vector(0)",
+          "legendFormat": "Failed Tasks",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Active Successes Over Time",
+      "description": "Counts how many task series currently hold a value of 1 at each scrape interval.",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == 1) or vector(0)",
+          "legendFormat": "Succeeded Tasks",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "🔍 Fleet Inventory",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Latest Task Status Inventory",
+      "description": "Shows the current state of every task in the fleet. 1=success, -1=failed",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+            "renameByName": { "Value": "Latest Status" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "displayMode": "color-background" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": -1 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

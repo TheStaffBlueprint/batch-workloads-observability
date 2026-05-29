@@ -1,41 +1,190 @@
 {
-  "annotations": {
+  "title": "Airflow Observability — V2 Gauge Fix",
+  "uid": "airflow-observability",
+  "tags": ["airflow", "v2", "gauge", "lab"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
-        "enable": true,
-        "hide": true,
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "name": "dag_id",
+        "label": "DAG",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status{job=\"airflow_tasks\"}, dag_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      },
+      {
+        "name": "run_id",
+        "label": "Run ID",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}, run_id)",
+        "sort": 0,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "task_id",
+        "label": "Task",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}, task_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": null,
-  "links": [],
-  "liveNow": false,
-  "panels": [],
-  "refresh": "",
-  "schemaVersion": 38,
-  "style": "dark",
-  "tags": [],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Barebones Observability Dashboard",
-  "uid": "barebones-obs",
-  "version": 1,
-  "weekStart": ""
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "mode": "markdown",
+        "content": "## ✅ V2: Gauge Fix Dashboard\nThis plugin uses Prometheus **Gauges** for state snapshots. Each task writes to its own isolated Pushgateway slot keyed by `dag_id + task_id + run_id`.\n\n**Fix 1 — Race Condition:** `run_id` in the grouping key gives every task instance its own slot. Parallel tasks no longer overwrite each other.\n\n**Fix 2 — Gauge Semantics:** If a task fails then retries and succeeds, `task_status` is overwritten to `1`. Only the FINAL state is visible.\n\n**⚠️ Trade-off:** `run_id` causes unbounded cardinality. A Sweeper DAG is required at scale. See V3 for the production-grade approach.\n\n**Enable with:** `AIRFLOW_VAR_ENABLE_V2_GAUGES=true`"
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "📊 Current State Snapshot",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tasks Currently Failed",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == -1) or vector(0)",
+          "legendFormat": "Failed",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tasks Currently Succeeded",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == 1) or vector(0)",
+          "legendFormat": "Succeeded",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "📈 Historical Trends (All Runs)",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Active Failures Over Time",
+      "description": "Counts how many task series currently hold a value of -1 at each scrape interval. Because run_id is in the grouping key, this shows the total across all active runs.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == -1) or vector(0)",
+          "legendFormat": "Failed Tasks",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Active Successes Over Time",
+      "description": "Counts how many task series currently hold a value of 1 at each scrape interval.",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "count(task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\"} == 1) or vector(0)",
+          "legendFormat": "Succeeded Tasks",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "🔍 Single Run Drilldown — select run_id above",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Task Status Snapshot [run_id = $run_id]",
+      "description": "Shows the final state of each task in the selected run. 1=success, -1=failed",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "task_status{job=\"airflow_tasks\", dag_id=~\"$dag_id\", run_id=\"$run_id\", task_id=~\"$task_id\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+            "renameByName": { "Value": "Status (1=success, -1=failed)" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "displayMode": "color-background" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": -1 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

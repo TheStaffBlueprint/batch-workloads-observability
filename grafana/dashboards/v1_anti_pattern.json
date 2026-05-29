@@ -1,41 +1,107 @@
 {
-  "annotations": {
+  "title": "V1: Anti-Pattern — Counter-based Pushgateway (Broken)",
+  "uid": "airflow-v1-anti-pattern",
+  "tags": ["airflow", "v1", "anti-pattern", "lab"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
-        "enable": true,
-        "hide": true,
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "name": "dag_id",
+        "label": "DAG",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status_total{job=\"airflow_tasks\"}, dag_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      },
+      {
+        "name": "task_id",
+        "label": "Task",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(task_status_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\"}, task_id)",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": null,
-  "links": [],
-  "liveNow": false,
-  "panels": [],
-  "refresh": "",
-  "schemaVersion": 38,
-  "style": "dark",
-  "tags": [],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Barebones Observability Dashboard",
-  "uid": "barebones-obs",
-  "version": 1,
-  "weekStart": ""
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "mode": "markdown",
+        "content": "## ❌ V1: Anti-Pattern Dashboard\nThis plugin uses Prometheus **Counters** without `run_id` in the grouping key.\n\n**Anti-Pattern 1 — Race Condition:** When multiple tasks run in parallel, they all write to the same Pushgateway slot. The last push wins — earlier pushes are silently overwritten.\n\n**Anti-Pattern 2 — Counter Semantics:** If a task fails then retries and succeeds, `task_status_total{state=\"failed\"}` is never erased. Both failure and success are permanently counted.\n\nEnable with: `AIRFLOW_VAR_ENABLE_V1_COUNTERS=true`"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Successes Recorded (Counter — will undercount under parallel load)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(task_status_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\", state=\"success\"})",
+          "legendFormat": "Successes",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Failures Recorded (Counter — will undercount under parallel load)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(task_status_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\", state=\"failed\"})",
+          "legendFormat": "Failures",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "task_status_total Over Time — Counter Accumulation",
+      "description": "Notice how concurrent task pushes collapse into a single value due to the missing run_id. The counter does not represent all events.",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "task_status_total{job=\"airflow_tasks\", dag_id=~\"$dag_id\", task_id=~\"$task_id\"}",
+          "legendFormat": "{{dag_id}} / {{task_id}} — {{state}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    }
+  ]
 }
